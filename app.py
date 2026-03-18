@@ -1,81 +1,85 @@
 import streamlit as st
 import feedparser
+import pandas as pd
 from datetime import datetime
 from streamlit_autorefresh import st_autorefresh
 
 # 1. SETUP & 3-MINUTE AUTO-REFRESH
-st.set_page_config(page_title="Market War Room", layout="wide", page_icon="🌍")
-st_autorefresh(interval=180000, key="datarefresh")
+st.set_page_config(page_title="Live Market Feed", layout="centered", page_icon="📡")
+st_autorefresh(interval=180000, key="news_refresh")
 
-# 2. IMPROVED STYLING
+# 2. CUSTOM CSS FOR SINGLE COLUMN SCROLLER
 st.markdown("""
     <style>
-    .main { background-color: #0e1117; }
-    .stExpander { border: 1px solid #ff4b4b; border-radius: 10px; margin-bottom: 10px; }
-    .highlight { color: #ff4b4b; font-weight: bold; }
+    .news-card {
+        padding: 20px;
+        border-radius: 12px;
+        background-color: #1e2129;
+        border-left: 5px solid #ff4b4b;
+        margin-bottom: 15px;
+    }
+    .category-tag {
+        color: #ff4b4b;
+        font-weight: bold;
+        text-transform: uppercase;
+        font-size: 0.75rem;
+        letter-spacing: 1px;
+    }
+    .timestamp {
+        color: #888;
+        font-size: 0.8rem;
+        float: right;
+    }
     </style>
     """, unsafe_allow_html=True)
 
-def fetch_news(url):
-    try:
-        feed = feedparser.parse(url)
-        return feed.entries[:10]
-    except:
-        return []
-
-# 3. GLOBAL & GEOPOLITICAL FEEDS
-FEEDS = {
-    "NSE_STOCKS": "https://economictimes.indiatimes.com/markets/stocks/rssfeeds/2146842.cms",
-    "MCX_COMMODITIES": "https://economictimes.indiatimes.com/markets/commodities/rssfeeds/2146844.cms",
-    "GEOPOLITICAL_RISK": "https://www.theguardian.com/world/iran/rss", # Tracking Iran specifically
-    "CRYPTO": "https://cointelegraph.com/rss"
-}
-
-st.title("🛡️ Multi-Market War Room Scanner")
-st.caption(f"Last Sync: {datetime.now().strftime('%H:%M:%S')} | Auto-refresh: 3 mins")
-
-# 4. DASHBOARD LAYOUT
-col1, col2, col3 = st.columns(3)
-
-with col1:
-    st.subheader("🇮🇳 NSE / BSE News")
-    for entry in fetch_news(FEEDS["NSE_STOCKS"]):
-        with st.container():
-            st.markdown(f"**{entry.title}**")
-            st.caption(f"[Source: ET] • [Read]({entry.link})")
-            st.divider()
-
-with col2:
-    st.subheader("🔥 MCX & Crude Impact")
-    # Added a secondary fallback for MCX
-    mcx_news = fetch_news(FEEDS["MCX_COMMODITIES"])
-    if not mcx_news:
-        st.warning("Primary MCX feed empty. Loading global energy news...")
-        mcx_news = fetch_news("https://www.investing.com/rss/news_11.rss") # Energy News
-        
-    for entry in mcx_news:
-        # Highlight news mentioning Crude or Iran
-        title = entry.title
-        if any(word in title.upper() for word in ["CRUDE", "OIL", "IRAN", "WAR"]):
-            st.markdown(f"🚨 <span class='highlight'>{title}</span>", unsafe_allow_html=True)
-        else:
-            st.markdown(f"**{title}**")
-        st.caption(f"[Source: News] • [Read]({entry.link})")
-        st.divider()
-
-with col3:
-    st.subheader("₿ Crypto & Global Risk")
-    # Mixing Geopolitical news with Crypto
-    geo_news = fetch_news(FEEDS["GEOPOLITICAL_RISK"])
-    crypto_news = fetch_news(FEEDS["CRYPTO"])
+# 3. DATA FETCHING FUNCTION
+def get_all_news():
+    feeds = {
+        "NSE/BSE": "https://economictimes.indiatimes.com/markets/stocks/rssfeeds/2146842.cms",
+        "MCX/CRUDE": "https://economictimes.indiatimes.com/markets/commodities/rssfeeds/2146844.cms",
+        "GLOBAL/IRAN": "https://www.investing.com/rss/news_1.rss",
+        "CRYPTO": "https://cointelegraph.com/rss"
+    }
     
-    st.info("⚠️ Geopolitical Alert: Iran Conflict")
-    for entry in geo_news[:3]: # Top 3 War updates
-        st.markdown(f"🌍 *{entry.title}*")
-        st.caption(f"[Geopolitics] • [Read]({entry.link})")
-        
-    st.markdown("---")
-    for entry in crypto_news[:7]:
-        st.markdown(f"**{entry.title}**")
-        st.caption(f"[Crypto] • [Read]({entry.link})")
-        st.divider()
+    combined_list = []
+    for category, url in feeds.items():
+        try:
+            feed = feedparser.parse(url)
+            for entry in feed.entries[:10]:
+                # Attempt to parse time, fallback to 'now' if missing
+                published = entry.get('published', datetime.now().strftime("%H:%M:%S"))
+                combined_list.append({
+                    "category": category,
+                    "title": entry.title,
+                    "link": entry.link,
+                    "time": published
+                })
+        except:
+            continue
+    return combined_list
+
+# 4. UI DISPLAY
+st.title("📡 Live Market Scanner")
+st.caption(f"Last Refreshed: {datetime.now().strftime('%H:%M:%S')} | Updates every 3 mins")
+
+news_data = get_all_news()
+
+if not news_data:
+    st.error("No news found. Checking connections...")
+else:
+    # Displaying as a vertical scroller
+    for item in news_data:
+        with st.container():
+            st.markdown(f"""
+                <div class="news-card">
+                    <span class="category-tag">{item['category']}</span>
+                    <span class="timestamp">{item['time']}</span>
+                    <h3 style="margin-top:10px; font-size:1.1rem;">{item['title']}</h3>
+                    <a href="{item['link']}" target="_blank" style="text-decoration:none; color:#4ea5ff;">Read Full Impact →</a>
+                </div>
+            """, unsafe_allow_html=True)
+
+# Sidebar Manual Refresh
+if st.sidebar.button("↻ Refresh Now"):
+    st.rerun()
