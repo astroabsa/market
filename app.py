@@ -6,7 +6,7 @@ from streamlit_autorefresh import st_autorefresh
 
 # 1. SETUP & 3-MINUTE AUTO-REFRESH
 st.set_page_config(page_title="IST Market Feed", layout="centered", page_icon="📡")
-st_autorefresh(interval=180000, key="news_refresh")
+st_autorefresh(interval=60000, key="news_refresh")
 
 # 2. TIMEZONE CONFIG (IST)
 IST = pytz.timezone('Asia/Kolkata')
