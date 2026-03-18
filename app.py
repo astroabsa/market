@@ -3,100 +3,102 @@ import feedparser
 from datetime import datetime
 import pytz
 from streamlit_autorefresh import st_autorefresh
+from vaderSentiment.vaderSentiment import SentimentIntensityAnalyzer
 
-# 1. SETUP & 3-MINUTE AUTO-REFRESH
-st.set_page_config(page_title="IST Market Feed", layout="centered", page_icon="📡")
+# 1. SETUP & 1-MINUTE AUTO-REFRESH
+st.set_page_config(page_title="Market Impact Scanner", layout="centered", page_icon="📈")
 st_autorefresh(interval=60000, key="news_refresh")
 
-# 2. TIMEZONE CONFIG (IST)
+# 2. INITIALIZE TOOLS
 IST = pytz.timezone('Asia/Kolkata')
+analyzer = SentimentIntensityAnalyzer()
+
+def get_sentiment(text):
+    # Custom weighting for market keywords
+    text_upper = text.upper()
+    score = analyzer.polarity_scores(text)['compound']
+    
+    # Override for specific high-impact market terms
+    if any(word in text_upper for word in ["WAR", "STRIKE", "CRASH", "DROP", "SANCTION", "TENSION"]):
+        return "BEARISH 🔴"
+    if any(word in text_upper for word in ["SURGE", "RALLY", "BREAKOUT", "BULLISH", "GAINS"]):
+        return "BULLISH 🟢"
+        
+    if score >= 0.05: return "BULLISH 🟢"
+    elif score <= -0.05: return "BEARISH 🔴"
+    else: return "NEUTRAL ⚪"
 
 def format_to_ist(struct_time):
-    # Converts RSS struct_time to IST Datetime
     dt = datetime(*struct_time[:6], tzinfo=pytz.utc)
     return dt.astimezone(IST)
 
-# 3. CUSTOM CSS
+# 3. UI STYLING
 st.markdown("""
     <style>
     .news-card {
-        padding: 18px;
-        border-radius: 10px;
-        background-color: #1e2129;
-        border-left: 5px solid #00d4ff;
-        margin-bottom: 12px;
+        padding: 20px;
+        border-radius: 12px;
+        background-color: #161b22;
+        border: 1px solid #30363d;
+        margin-bottom: 15px;
     }
-    .category-tag {
-        color: #00d4ff;
-        font-weight: bold;
-        font-size: 0.7rem;
-        letter-spacing: 1px;
-    }
-    .timestamp {
-        color: #999;
-        font-size: 0.75rem;
-        float: right;
-    }
+    .tag-container { display: flex; justify-content: space-between; margin-bottom: 10px; }
+    .category-tag { color: #8b949e; font-size: 0.7rem; font-weight: bold; text-transform: uppercase; }
+    .impact-tag { font-size: 0.75rem; font-weight: bold; padding: 2px 8px; border-radius: 4px; background: #21262d; }
+    .timestamp { color: #58a6ff; font-size: 0.8rem; }
     </style>
     """, unsafe_allow_html=True)
 
 # 4. DATA FETCHING
-def get_all_news():
+def fetch_all_feeds():
     feeds = {
         "NSE/BSE": "https://economictimes.indiatimes.com/markets/stocks/rssfeeds/2146842.cms",
         "MCX/CRUDE": "https://economictimes.indiatimes.com/markets/commodities/rssfeeds/2146844.cms",
-        "GLOBAL/IRAN": "https://www.investing.com/rss/news_1.rss",
+        "GLOBAL/GEOPOLITICS": "https://www.investing.com/rss/news_1.rss",
         "CRYPTO": "https://cointelegraph.com/rss"
     }
     
-    combined_list = []
-    now = datetime.now(IST)
+    combined = []
+    now_ist = datetime.now(IST)
 
-    for category, url in feeds.items():
+    for cat, url in feeds.items():
         try:
-            feed = feedparser.parse(url)
-            for entry in feed.entries[:8]:
-                # Convert published time to IST
-                if hasattr(entry, 'published_parsed'):
-                    dt_ist = format_to_ist(entry.published_parsed)
-                    time_display = dt_ist.strftime("%I:%M %p")
-                else:
-                    time_display = now.strftime("%I:%M %p")
+            f = feedparser.parse(url)
+            for entry in f.entries[:10]:
+                dt_ist = format_to_ist(entry.published_parsed) if hasattr(entry, 'published_parsed') else now_ist
+                impact = get_sentiment(entry.title)
                 
-                combined_list.append({
-                    "category": category,
-                    "title": entry.title,
-                    "link": entry.link,
-                    "time": time_display,
-                    "raw_time": dt_ist if hasattr(entry, 'published_parsed') else now
+                combined.append({
+                    "cat": cat, "title": entry.title, "link": entry.link,
+                    "time": dt_ist.strftime("%I:%M %p"), "raw_time": dt_ist, "impact": impact
                 })
-        except:
-            continue
+        except: continue
     
-    # Sort by newest first
-    combined_list.sort(key=lambda x: x['raw_time'], reverse=True)
-    return combined_list
+    combined.sort(key=lambda x: x['raw_time'], reverse=True)
+    return combined
 
-# 5. UI DISPLAY
-st.title("📡 Live IST Market Scanner")
-st.write(f"**Current Time (IST):** {datetime.now(IST).strftime('%Y-%m-%d | %I:%M:%S %p')}")
+# 5. DASHBOARD
+st.title("📡 Live Market Impact Scanner")
+st.caption(f"Tracking NSE, MCX & Crypto | Last IST Sync: {datetime.now(IST).strftime('%I:%M:%S %p')}")
 
-news_data = get_all_news()
+news_list = fetch_all_feeds()
 
-if not news_data:
-    st.warning("Fetching live updates...")
-else:
-    for item in news_data:
-        with st.container():
-            st.markdown(f"""
-                <div class="news-card">
-                    <span class="category-tag">{item['category']}</span>
-                    <span class="timestamp">🕒 {item['time']}</span>
-                    <h3 style="margin-top:8px; font-size:1rem; color:#f0f2f6;">{item['title']}</h3>
-                    <a href="{item['link']}" target="_blank" style="text-decoration:none; color:#00d4ff; font-size:0.8rem;">Read Analysis →</a>
-                </div>
-            """, unsafe_allow_html=True)
+for item in news_list:
+    # High-Impact highlighting for Iran/War news
+    is_high_alert = any(word in item['title'].upper() for word in ["IRAN", "WAR", "OIL"])
+    border_color = "#ff4b4b" if is_high_alert else "#30363d"
+    
+    st.markdown(f"""
+        <div class="news-card" style="border-left: 5px solid {border_color};">
+            <div class="tag-container">
+                <span class="category-tag">{item['cat']}</span>
+                <span class="impact-tag">{item['impact']}</span>
+            </div>
+            <h3 style="margin: 0 0 10px 0; font-size: 1.1rem; line-height: 1.4;">{item['title']}</h3>
+            <span class="timestamp">🕒 {item['time']}</span>
+            <span style="float:right;"><a href="{item['link']}" target="_blank" style="color:#58a6ff; text-decoration:none; font-size:0.8rem;">View Detail →</a></span>
+        </div>
+    """, unsafe_allow_html=True)
 
-# Manual Refresh in Sidebar
-if st.sidebar.button("↻ Force Refresh"):
+if st.sidebar.button("↻ Refresh Feed"):
     st.rerun()
