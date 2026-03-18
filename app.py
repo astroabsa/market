@@ -26,7 +26,7 @@ st.markdown("""
         background: #1e2129;
     }
     </style>
-    """, unsafe_allow_input=True)
+    """, unsafe_allow_html=True)
 
 # 3. DATA FETCHING LOGIC
 def fetch_market_news(url, market_label):
