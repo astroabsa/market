@@ -6,7 +6,7 @@ from streamlit_autorefresh import st_autorefresh
 from vaderSentiment.vaderSentiment import SentimentIntensityAnalyzer
 
 # 1. SETUP & 3-MINUTE AUTO-REFRESH
-st.set_page_config(page_title="Market Impact Scanner", layout="centered", page_icon="📈")
+st.set_page_config(page_title="Pro Market Impact Scanner", layout="centered", page_icon="📡")
 st_autorefresh(interval=180000, key="news_refresh")
 
 # 2. INITIALIZE TOOLS
@@ -14,14 +14,13 @@ IST = pytz.timezone('Asia/Kolkata')
 analyzer = SentimentIntensityAnalyzer()
 
 def get_sentiment(text):
-    # Custom weighting for market keywords
     text_upper = text.upper()
     score = analyzer.polarity_scores(text)['compound']
     
-    # Override for specific high-impact market terms
-    if any(word in text_upper for word in ["WAR", "STRIKE", "CRASH", "DROP", "SANCTION", "TENSION"]):
+    # 2026 Specific Impact Keywords (Iran War, FII Outflows)
+    if any(word in text_upper for word in ["WAR", "STRIKE", "FII SELL", "RUPEE FALL", "CRUDE SPIKE"]):
         return "BEARISH 🔴"
-    if any(word in text_upper for word in ["SURGE", "RALLY", "BREAKOUT", "BULLISH", "GAINS"]):
+    if any(word in text_upper for word in ["SURGE", "RALLY", "FII BUY", "STIMULUS", "GDP BEAT"]):
         return "BULLISH 🟢"
         
     if score >= 0.05: return "BULLISH 🟢"
@@ -32,37 +31,41 @@ def format_to_ist(struct_time):
     dt = datetime(*struct_time[:6], tzinfo=pytz.utc)
     return dt.astimezone(IST)
 
-# 3. UI STYLING
+# 3. UI STYLING (Forced Contrast for Dark Mode)
 st.markdown("""
     <style>
     .main { background-color: #0d1117; }
     .news-card {
-        padding: 20px;
-        border-radius: 12px;
+        padding: 18px;
+        border-radius: 10px;
         background-color: #161b22;
         border: 1px solid #30363d;
-        margin-bottom: 15px;
+        margin-bottom: 12px;
     }
     .headline-text {
-        color: #f0f6fc !important; /* Forces light text */
+        color: #f0f6fc !important;
         margin: 10px 0;
-        font-size: 1.1rem;
+        font-size: 1.05rem;
         line-height: 1.4;
         font-weight: 600;
     }
     .tag-container { display: flex; justify-content: space-between; margin-bottom: 10px; }
-    .category-tag { color: #8b949e; font-size: 0.7rem; font-weight: bold; text-transform: uppercase; }
+    .category-tag { color: #58a6ff; font-size: 0.7rem; font-weight: bold; border: 1px solid #58a6ff; padding: 2px 5px; border-radius: 3px; }
     .impact-tag { font-size: 0.75rem; font-weight: bold; padding: 2px 8px; border-radius: 4px; background: #21262d; }
-    .timestamp { color: #58a6ff; font-size: 0.8rem; }
+    .timestamp { color: #8b949e; font-size: 0.8rem; }
     </style>
     """, unsafe_allow_html=True)
-# 4. DATA FETCHING
+
+# 4. DATA FETCHING (Verified 2026 Sources)
 def fetch_all_feeds():
+    # Swapped broken media links for official exchange & high-speed global feeds
     feeds = {
-        "NSE/BSE": "https://economictimes.indiatimes.com/markets/stocks/rssfeeds/2146842.cms",
-        "MCX/CRUDE": "https://economictimes.indiatimes.com/markets/commodities/rssfeeds/2146844.cms",
-        "GLOBAL/GEOPOLITICS": "https://www.investing.com/rss/news_1.rss",
-        "CRYPTO": "https://cointelegraph.com/rss"
+        "🇮🇳 NSE CORPORATE": "https://www.nseindia.com/static/rss/corporate_announcements.xml",
+        "📊 INDIA MARKETS": "https://in.investing.com/rss/news_301.rss",
+        "🔥 MCX/ENERGY": "https://in.investing.com/rss/news_11.rss",
+        "💎 GOLD/BULLION": "https://www.kitco.com/rss/index.xml",
+        "🌍 GLOBAL MACRO": "https://in.investing.com/rss/news_1.rss",
+        "₿ CRYPTO": "https://cointelegraph.com/rss"
     }
     
     combined = []
@@ -85,28 +88,31 @@ def fetch_all_feeds():
     return combined
 
 # 5. DASHBOARD
-st.title("📡 Live Market Impact Scanner")
-st.caption(f"Tracking NSE, MCX & Crypto | Last IST Sync: {datetime.now(IST).strftime('%I:%M:%S %p')}")
+st.title("🛡️ Multi-Asset Real-Time Scanner")
+st.caption(f"Tracking NSE, MCX & Crypto | Live IST: {datetime.now(IST).strftime('%I:%M:%S %p')}")
 
 news_list = fetch_all_feeds()
 
-for item in news_list:
-    is_high_alert = any(word in item['title'].upper() for word in ["IRAN", "WAR", "OIL"])
-    border_color = "#ff4b4b" if is_high_alert else "#30363d"
-    
-    st.markdown(f"""
-        <div class="news-card" style="border-left: 5px solid {border_color};">
-            <div class="tag-container">
-                <span class="category-tag">{item['cat']}</span>
-                <span class="impact-tag">{item['impact']}</span>
+if not news_list:
+    st.error("Connection failed. Check your internet or Streamlit Cloud logs.")
+else:
+    for item in news_list:
+        # High-Alert border for Bearish news (Crude spikes/War risk)
+        alert = "2px solid #ff4b4b" if "BEARISH" in item['impact'] else "1px solid #30363d"
+        
+        st.markdown(f"""
+            <div class="news-card" style="border-left: 5px solid {alert if '5px' in alert else alert}; border: {alert};">
+                <div class="tag-container">
+                    <span class="category-tag">{item['cat']}</span>
+                    <span class="impact-tag">{item['impact']}</span>
+                </div>
+                <div class="headline-text">{item['title']}</div>
+                <div style="margin-top: 12px;">
+                    <span class="timestamp">🕒 {item['time']}</span>
+                    <span style="float:right;"><a href="{item['link']}" target="_blank" style="color:#58a6ff; text-decoration:none; font-size:0.8rem;">Read Full Impact →</a></span>
+                </div>
             </div>
-            <div class="headline-text">{item['title']}</div>
-            <div style="margin-top: 15px;">
-                <span class="timestamp">🕒 {item['time']}</span>
-                <span style="float:right;"><a href="{item['link']}" target="_blank" style="color:#58a6ff; text-decoration:none; font-size:0.8rem;">View Detail →</a></span>
-            </div>
-        </div>
-    """, unsafe_allow_html=True)
+        """, unsafe_allow_html=True)
 
 if st.sidebar.button("↻ Refresh Feed"):
     st.rerun()
