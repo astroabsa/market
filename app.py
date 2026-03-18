@@ -35,6 +35,7 @@ def format_to_ist(struct_time):
 # 3. UI STYLING
 st.markdown("""
     <style>
+    .main { background-color: #0d1117; }
     .news-card {
         padding: 20px;
         border-radius: 12px;
@@ -42,13 +43,19 @@ st.markdown("""
         border: 1px solid #30363d;
         margin-bottom: 15px;
     }
+    .headline-text {
+        color: #f0f6fc !important; /* Forces light text */
+        margin: 10px 0;
+        font-size: 1.1rem;
+        line-height: 1.4;
+        font-weight: 600;
+    }
     .tag-container { display: flex; justify-content: space-between; margin-bottom: 10px; }
     .category-tag { color: #8b949e; font-size: 0.7rem; font-weight: bold; text-transform: uppercase; }
     .impact-tag { font-size: 0.75rem; font-weight: bold; padding: 2px 8px; border-radius: 4px; background: #21262d; }
     .timestamp { color: #58a6ff; font-size: 0.8rem; }
     </style>
     """, unsafe_allow_html=True)
-
 # 4. DATA FETCHING
 def fetch_all_feeds():
     feeds = {
@@ -84,7 +91,6 @@ st.caption(f"Tracking NSE, MCX & Crypto | Last IST Sync: {datetime.now(IST).strf
 news_list = fetch_all_feeds()
 
 for item in news_list:
-    # High-Impact highlighting for Iran/War news
     is_high_alert = any(word in item['title'].upper() for word in ["IRAN", "WAR", "OIL"])
     border_color = "#ff4b4b" if is_high_alert else "#30363d"
     
@@ -94,9 +100,11 @@ for item in news_list:
                 <span class="category-tag">{item['cat']}</span>
                 <span class="impact-tag">{item['impact']}</span>
             </div>
-            <h3 style="margin: 0 0 10px 0; font-size: 1.1rem; line-height: 1.4;">{item['title']}</h3>
-            <span class="timestamp">🕒 {item['time']}</span>
-            <span style="float:right;"><a href="{item['link']}" target="_blank" style="color:#58a6ff; text-decoration:none; font-size:0.8rem;">View Detail →</a></span>
+            <div class="headline-text">{item['title']}</div>
+            <div style="margin-top: 15px;">
+                <span class="timestamp">🕒 {item['time']}</span>
+                <span style="float:right;"><a href="{item['link']}" target="_blank" style="color:#58a6ff; text-decoration:none; font-size:0.8rem;">View Detail →</a></span>
+            </div>
         </div>
     """, unsafe_allow_html=True)
 
