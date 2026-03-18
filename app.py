@@ -14,7 +14,7 @@ st.markdown("""
     .news-card {
         padding: 20px;
         border-radius: 12px;
-        background-color: #1e2129;
+        background-color: #00000;
         border-left: 5px solid #ff4b4b;
         margin-bottom: 15px;
     }
