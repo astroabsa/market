@@ -1,81 +1,77 @@
 import streamlit as st
 import requests
 import time
-from vaderSentiment.vaderSentiment import SentimentIntensityAnalyzer
-
-analyzer = SentimentIntensityAnalyzer()
 
 NEWS_API_KEY = "cf8efaee440848faa4a6b34964cd0874"
 
-KEYWORDS = [
-    "rbi", "inflation", "interest rate", "crude", "gold",
-    "bitcoin", "crypto", "war", "fed", "recession", "policy"
-]
-
 def fetch_news():
-    url = f"https://newsapi.org/v2/everything?q=india OR crypto OR crude&apiKey={NEWS_API_KEY}"
-    response = requests.get(url)
-    return response.json().get("articles", [])
+    url = f"https://newsapi.org/v2/everything?q=india OR crude OR crypto&apiKey={NEWS_API_KEY}"
+    return requests.get(url).json()["articles"]
 
-def filter_news(articles):
-    filtered = []
-    for art in articles:
-        title = art["title"].lower()
-        if any(k in title for k in KEYWORDS):
-            filtered.append(art)
-    return filtered
+def classify_news(title):
+    t = title.lower()
 
-def classify_market(news):
-    text = news.lower()
-
-    if "rbi" in text or "interest rate" in text:
-        return "NSE"
-    elif "crude" in text or "gold" in text:
-        return "MCX"
-    elif "bitcoin" in text or "crypto" in text:
-        return "CRYPTO"
+    if "rbi" in t and "hike" in t:
+        return "Bearish", "NSE", "Banking"
+    elif "crude" in t:
+        return "Bullish", "MCX", "Energy"
+    elif "bitcoin" in t:
+        return "Bullish", "CRYPTO", "Crypto"
     else:
-        return "GENERAL"
+        return "Neutral", "GENERAL", "General"
 
-def sentiment_label(text):
-    score = analyzer.polarity_scores(text)["compound"]
-    if score > 0.2:
-        return "Bullish"
-    elif score < -0.2:
-        return "Bearish"
+def impact_score(text):
+    score = 1
+    if any(w in text for w in ["war", "ban", "crisis"]):
+        score += 3
+    elif any(w in text for w in ["rise", "fall"]):
+        score += 1
+    return min(score, 5)
+
+def option_chain_mock():
+    # Replace with real API later
+    return "Bullish", 1.3
+
+def trade_engine(news_bias, option_bias, impact):
+    score = impact
+
+    if news_bias == option_bias:
+        score += 2
+
+    if score >= 4:
+        return "🔥 STRONG TRADE"
+    elif score >= 2:
+        return "⚡ MODERATE"
     else:
-        return "Neutral"
+        return "❌ AVOID"
 
-st.title("📡 Live Market News Scanner")
+st.title("🚀 PRO Market Scanner")
 
 placeholder = st.empty()
 
 while True:
-    articles = fetch_news()
-    filtered = filter_news(articles)
-
-    output = []
-
-    for art in filtered[:10]:
-        title = art["title"]
-        sentiment = sentiment_label(title)
-        market = classify_market(title)
-
-        label = f"{sentiment} : {market}"
-
-        output.append({
-            "Title": title,
-            "Label": label,
-            "Source": art["source"]["name"]
-        })
+    news = fetch_news()
 
     with placeholder.container():
-        for item in output:
+        for n in news[:10]:
+            title = n["title"]
+
+            news_bias, market, sector = classify_news(title)
+            impact = impact_score(title.lower())
+
+            option_bias, pcr = option_chain_mock()
+
+            decision = trade_engine(news_bias, option_bias, impact)
+
             st.markdown(f"""
-            **{item['Title']}**  
-            Label: `{item['Label']}`  
-            Source: {item['Source']}
+            **{title}**
+            
+            Market: `{market}` | Sector: `{sector}`  
+            Bias: `{news_bias}` | Impact: `{'🔥'*impact}`  
+            Option Bias: `{option_bias}` (PCR: {pcr})  
+            
+            👉 **Decision: {decision}**
             ---
             """)
 
-    time.sleep(30)
+    time.sleep(20)
