@@ -7,55 +7,33 @@ import pandas as pd
 NEWS_API_KEY = "cf8efaee440848faa4a6b34964cd0874"
 REFRESH_TIME = 30
 
-# ---------------- KEYWORDS ---------------- #
-KEYWORDS = [
-    "rbi", "inflation", "interest rate", "crude", "gold",
-    "bitcoin", "crypto", "war", "fed", "recession",
-    "opec", "ban", "approval", "policy"
-]
-
 # ---------------- FETCH NEWS ---------------- #
 def fetch_news():
     try:
-        url = f"https://newsapi.org/v2/everything?q=crypto OR bitcoin OR crude OR rbi&sortBy=publishedAt&apiKey={NEWS_API_KEY}"
+        url = f"https://newsapi.org/v2/everything?q=crypto OR crude OR rbi OR gold OR nifty&sortBy=publishedAt&apiKey={NEWS_API_KEY}"
         res = requests.get(url, timeout=5)
-
-        if res.status_code != 200:
-            return []
-
-        data = res.json()
-        return data.get("articles", [])
-
+        return res.json().get("articles", [])
     except:
         return []
 
-# ---------------- FILTER ---------------- #
-def filter_news(articles):
-    return [a for a in articles if any(k in a["title"].lower() for k in KEYWORDS)]
-
-# ---------------- SMART CLASSIFICATION ---------------- #
+# ---------------- CLASSIFICATION ---------------- #
 def classify_news(title):
     t = title.lower()
 
-    # Crypto
     if "bitcoin" in t or "crypto" in t:
-        if any(x in t for x in ["fall", "drop", "pullback", "crash"]):
+        if any(x in t for x in ["fall", "drop", "crash"]):
             return "Bearish", "CRYPTO"
-        elif any(x in t for x in ["etf", "approval", "adoption", "surge"]):
+        elif any(x in t for x in ["etf", "approval", "surge"]):
             return "Bullish", "CRYPTO"
-        elif "ban" in t:
-            return "Bearish", "CRYPTO"
         return "Neutral", "CRYPTO"
 
-    # NSE
     if "rbi" in t:
         if "hike" in t:
             return "Bearish", "NSE"
         elif "cut" in t:
             return "Bullish", "NSE"
 
-    # MCX
-    if "crude" in t or "opec" in t:
+    if "crude" in t:
         return "Bullish", "MCX"
 
     if "gold" in t:
@@ -66,52 +44,41 @@ def classify_news(title):
 # ---------------- IMPACT ---------------- #
 def impact_score(text):
     score = 1
-
-    strong = ["war", "ban", "crisis", "approval", "etf"]
-    medium = ["rise", "fall", "increase", "decrease"]
-
-    for w in strong:
-        if w in text:
-            score += 3
-
-    for w in medium:
-        if w in text:
-            score += 1
-
+    if any(w in text for w in ["war", "ban", "crisis"]):
+        score += 3
+    if any(w in text for w in ["rise", "fall"]):
+        score += 1
     return min(score, 5)
 
-# ---------------- FETCH BTC DATA (FAIL-SAFE) ---------------- #
-def fetch_btc_data():
+# ---------------- FETCH MARKET DATA ---------------- #
+def fetch_yahoo(symbol):
     try:
-        url = "https://api.binance.com/api/v3/klines?symbol=BTCUSDT&interval=5m&limit=50"
-        res = requests.get(url, timeout=5)
+        url = f"https://query1.finance.yahoo.com/v8/finance/chart/{symbol}?range=1d&interval=5m"
+        data = requests.get(url, timeout=5).json()
 
-        if res.status_code != 200:
-            return None
-
-        data = res.json()
-
-        if not isinstance(data, list) or len(data) == 0:
-            return None
-
-        df = pd.DataFrame(data, columns=[
-            "time","open","high","low","close","volume",
-            "ct","qav","trades","tb","tq","ignore"
-        ])
-
-        df["close"] = pd.to_numeric(df["close"], errors="coerce")
+        closes = data["chart"]["result"][0]["indicators"]["quote"][0]["close"]
+        df = pd.DataFrame(closes, columns=["close"])
         df.dropna(inplace=True)
 
-        if df.empty:
-            return None
-
         return df
+    except:
+        return None
 
+def fetch_binance():
+    try:
+        url = "https://api.binance.com/api/v3/klines?symbol=BTCUSDT&interval=5m&limit=50"
+        data = requests.get(url, timeout=5).json()
+
+        df = pd.DataFrame(data, columns=["t","o","h","l","c","v","ct","q","n","tb","tq","i"])
+        df["close"] = pd.to_numeric(df["c"], errors="coerce")
+        df.dropna(inplace=True)
+
+        return df[["close"]]
     except:
         return None
 
 # ---------------- TREND ---------------- #
-def calculate_trend(df):
+def trend(df):
     if df is None or df.empty or len(df) < 20:
         return "Unknown"
 
@@ -124,90 +91,109 @@ def calculate_trend(df):
         return "Bullish"
     elif price < ema:
         return "Bearish"
-
     return "Neutral"
 
 # ---------------- CONFIDENCE ---------------- #
-def calculate_confidence(news_bias, trend, impact):
+def confidence(news, trend_val, impact):
     score = impact
 
-    if trend == "Unknown":
+    if trend_val == "Unknown":
         return 1
 
-    if news_bias == trend:
+    if news == trend_val:
         score += 3
     else:
         score -= 2
 
     return max(min(score, 10), 1)
 
-# ---------------- FINAL ACTION ---------------- #
-def final_action(news_bias, trend, confidence):
+# ---------------- ACTION ---------------- #
+def action(news, trend_val, conf):
 
-    if trend == "Unknown":
+    if trend_val == "Unknown":
         return "NO DATA"
 
-    if news_bias == "Neutral":
+    if news == "Neutral":
         return "SKIP"
 
-    if news_bias != trend:
+    if news != trend_val:
         return "⚠️ TRAP"
 
-    if confidence >= 7:
-        return "BUY CALL" if news_bias == "Bullish" else "BUY PUT"
+    if conf >= 7:
+        return "BUY CALL" if news == "Bullish" else "BUY PUT"
 
-    elif confidence >= 4:
+    elif conf >= 4:
         return "WATCH"
 
     return "SKIP"
 
-# ---------------- UI ---------------- #
-def display_card(title, market, bias, impact, trend, action, confidence):
-
-    st.markdown(f"""
-    ### 📰 {title}
-
-    **🧭 Market:** {market}  
-    **📈 News Bias:** {bias} {'🔥'*impact}  
-    **📉 Trend:** {trend}  
-
-    ### 👉 ACTION: {action}
-    🎯 Confidence: {confidence}/10
-
-    ---
-    """)
-
 # ---------------- STREAMLIT ---------------- #
 st.set_page_config(layout="wide")
-st.title("🚀 PRO Market Scanner (Final Version)")
+st.title("🚀 Ultimate Market Scanner")
 
 placeholder = st.empty()
 
 while True:
-    articles = fetch_news()
-    filtered = filter_news(articles)
 
-    btc_df = fetch_btc_data()
-    trend = calculate_trend(btc_df)
+    news_data = fetch_news()
+
+    # Fetch trends
+    nifty_df = fetch_yahoo("^NSEI")
+    bank_df = fetch_yahoo("^NSEBANK")
+    gold_df = fetch_yahoo("GLD")
+    crude_df = fetch_yahoo("USO")
+    btc_df = fetch_binance()
+
+    trends = {
+        "NSE": trend(nifty_df),
+        "BANK": trend(bank_df),
+        "MCX_GOLD": trend(gold_df),
+        "MCX_CRUDE": trend(crude_df),
+        "CRYPTO": trend(btc_df)
+    }
 
     with placeholder.container():
 
+        st.subheader("📊 Market Trends")
+        st.write(trends)
+
         found = False
 
-        for art in filtered[:15]:
-            title = art["title"]
+        for n in news_data[:20]:
 
+            title = n["title"]
             news_bias, market = classify_news(title)
-            impact = impact_score(title.lower())
+            imp = impact_score(title.lower())
 
-            confidence = calculate_confidence(news_bias, trend, impact)
-            action = final_action(news_bias, trend, confidence)
+            if market == "NSE":
+                t = trends["NSE"]
+            elif market == "MCX":
+                t = trends["MCX_CRUDE"]
+            elif market == "CRYPTO":
+                t = trends["CRYPTO"]
+            else:
+                t = "Unknown"
 
-            if action not in ["SKIP", "NO DATA"]:
+            conf = confidence(news_bias, t, imp)
+            act = action(news_bias, t, conf)
+
+            if act not in ["SKIP", "NO DATA"]:
+
                 found = True
-                display_card(title, market, news_bias, impact, trend, action, confidence)
+
+                st.markdown(f"""
+                ### 📰 {title}
+
+                Market: {market}  
+                News Bias: {news_bias} {'🔥'*imp}  
+                Trend: {t}  
+
+                👉 ACTION: {act}  
+                🎯 Confidence: {conf}/10
+                ---
+                """)
 
         if not found:
-            st.info("No high-quality setups right now — market not aligned ⏳")
+            st.info("No strong aligned trades right now ⏳")
 
     time.sleep(REFRESH_TIME)
