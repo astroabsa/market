@@ -5,7 +5,7 @@ from vaderSentiment.vaderSentiment import SentimentIntensityAnalyzer
 
 analyzer = SentimentIntensityAnalyzer()
 
-NEWS_API_KEY = "YOUR_API_KEY"
+NEWS_API_KEY = "cf8efaee440848faa4a6b34964cd0874"
 
 KEYWORDS = [
     "rbi", "inflation", "interest rate", "crude", "gold",
